@@ -75,6 +75,27 @@ RSpec.describe Dependabot::NpmAndYarn::NativeHelpers do
       ensure
         Dependabot::NpmAndYarn::Helpers.dependency_files = nil
       end
+
+      it "passes the security bypass through verbatim and keeps it distinguishable in the fingerprint" do
+        expect(Dependabot::NpmAndYarn::Helpers).to receive(:run_npm_command) do |command, options|
+          expect(command).to include("--min-release-age=0")
+          expect(options[:fingerprint]).to include("--min-release-age=0")
+          ""
+        end
+
+        described_class.run_npm8_subdependency_update_command(["lodash"], min_release_age_arg: "--min-release-age=0")
+      end
+
+      it "passes a cooldown floor through but masks the day count in the fingerprint" do
+        expect(Dependabot::NpmAndYarn::Helpers).to receive(:run_npm_command) do |command, options|
+          expect(command).to include("--min-release-age=7")
+          expect(options[:fingerprint]).to include("--min-release-age=<days>")
+          expect(options[:fingerprint]).not_to include("--min-release-age=7")
+          ""
+        end
+
+        described_class.run_npm8_subdependency_update_command(["lodash"], min_release_age_arg: "--min-release-age=7")
+      end
     end
 
     context "when running on npm 11" do
@@ -115,6 +136,28 @@ RSpec.describe Dependabot::NpmAndYarn::NativeHelpers do
         end
 
         described_class.run_npm_audit_fix_command
+      end
+
+      it "passes the security bypass through verbatim and keeps it distinguishable in the fingerprint" do
+        expect(Dependabot::NpmAndYarn::Helpers).to receive(:run_npm_command) do |command, options|
+          expect(command).to start_with("audit fix")
+          expect(command).to include("--min-release-age=0")
+          expect(options[:fingerprint]).to include("--min-release-age=0")
+          ""
+        end
+
+        described_class.run_npm_audit_fix_command(min_release_age_arg: "--min-release-age=0")
+      end
+
+      it "passes a cooldown floor through but masks the day count in the fingerprint" do
+        expect(Dependabot::NpmAndYarn::Helpers).to receive(:run_npm_command) do |command, options|
+          expect(command).to include("--min-release-age=14")
+          expect(options[:fingerprint]).to include("--min-release-age=<days>")
+          expect(options[:fingerprint]).not_to include("--min-release-age=14")
+          ""
+        end
+
+        described_class.run_npm_audit_fix_command(min_release_age_arg: "--min-release-age=14")
       end
     end
 

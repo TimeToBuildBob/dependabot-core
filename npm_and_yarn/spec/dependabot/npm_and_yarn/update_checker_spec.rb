@@ -2496,6 +2496,63 @@ RSpec.describe Dependabot::NpmAndYarn::UpdateChecker do
       expect(checker.update_cooldown.default_days).to eq(3)
     end
 
+    it "logs that the npmrc value is applied because no dependabot.yml cooldown is set" do
+      allow(Dependabot.logger).to receive(:info)
+
+      checker
+
+      expect(Dependabot.logger).to have_received(:info).with(
+        ".npmrc min-release-age (3 days) is applied as the cooldown because no dependabot.yml cooldown is configured."
+      )
+    end
+
+    context "when .npmrc sets min-release-age more than once" do
+      let(:dependency_files) do
+        project_dependency_files("npm6/npmrc_min_release_age").reject { |f| f.name == ".npmrc" } +
+          [Dependabot::DependencyFile.new(name: ".npmrc", content: "min-release-age=3\nmin-release-age=30\n")]
+      end
+
+      it "uses the last value, which is the one npm enforces" do
+        expect(checker.update_cooldown.default_days).to eq(30)
+      end
+    end
+
+    context "when several .npmrc files set different values" do
+      let(:dependency_files) do
+        project_dependency_files("npm6/npmrc_min_release_age").reject { |f| f.name == ".npmrc" } +
+          [
+            Dependabot::DependencyFile.new(name: ".npmrc", content: "min-release-age=3\n"),
+            Dependabot::DependencyFile.new(name: "packages/app/.npmrc", content: "min-release-age=14\n")
+          ]
+      end
+
+      it "uses the highest value" do
+        expect(checker.update_cooldown.default_days).to eq(14)
+      end
+    end
+
+    context "when min-release-age has a quoted value and a trailing comment" do
+      let(:dependency_files) do
+        project_dependency_files("npm6/npmrc_min_release_age").reject { |f| f.name == ".npmrc" } +
+          [Dependabot::DependencyFile.new(name: ".npmrc", content: "min-release-age=\"5\" # a few days\n")]
+      end
+
+      it "parses the value" do
+        expect(checker.update_cooldown.default_days).to eq(5)
+      end
+    end
+
+    context "when min-release-age is not a number" do
+      let(:dependency_files) do
+        project_dependency_files("npm6/npmrc_min_release_age").reject { |f| f.name == ".npmrc" } +
+          [Dependabot::DependencyFile.new(name: ".npmrc", content: "min-release-age=soon\n")]
+      end
+
+      it "does not apply a cooldown" do
+        expect(checker.update_cooldown).to be_nil
+      end
+    end
+
     context "when this is a security update" do
       let(:security_advisories) do
         [
@@ -2509,6 +2566,15 @@ RSpec.describe Dependabot::NpmAndYarn::UpdateChecker do
 
       it "does not apply the npmrc min-release-age cooldown floor" do
         expect(checker.update_cooldown).to be_nil
+      end
+
+      it "logs that the npmrc value is bypassed" do
+        allow(Dependabot.logger).to receive(:info)
+
+        checker
+
+        expect(Dependabot.logger).to have_received(:info)
+          .with(".npmrc min-release-age (3 days) is bypassed for this security update.")
       end
     end
 
@@ -2526,6 +2592,17 @@ RSpec.describe Dependabot::NpmAndYarn::UpdateChecker do
       it "keeps default_days unchanged and logs no warning" do
         expect(Dependabot.logger).not_to receive(:warn)
         expect(checker.update_cooldown.default_days).to eq(10)
+      end
+
+      it "logs that the dependabot.yml cooldown is used" do
+        allow(Dependabot.logger).to receive(:info)
+
+        checker
+
+        expect(Dependabot.logger).to have_received(:info).with(
+          ".npmrc min-release-age (3 days) is already satisfied by all dependabot.yml update_cooldown " \
+          "values; the dependabot.yml cooldown is used."
+        )
       end
     end
 
